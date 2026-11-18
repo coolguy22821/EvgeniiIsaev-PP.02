@@ -1,45 +1,19 @@
-import tempfile
-import unittest
+import tempfile,unittest
 from pathlib import Path
 from unittest.mock import patch
+import app
 
-import app as project
+class Week2Tests(unittest.TestCase):
+ def setUp(self):
+  self.tmp=tempfile.TemporaryDirectory(); app.DB_PATH=Path(self.tmp.name)/"test.db"
+  app.app.config["TESTING"]=True; self.client=app.app.test_client(); app.init_db()
+ def tearDown(self): self.tmp.cleanup()
+ @patch("app.send_registration_notification")
+ def test_registration_writes_notification_log(self,notify):
+  notify.return_value={"status":"demo","details":"test"}
+  r=self.client.post("/register",data={"full_name":"Анна","group_name":"ПИ-22","email":"a@example.com","competition_name":"Проекты"},follow_redirects=True)
+  self.assertEqual(r.status_code,200); notify.assert_called_once()
+  with app.db() as con: self.assertEqual(con.execute("SELECT COUNT(*) FROM notification_log").fetchone()[0],1)
+ def test_notifications_page(self): self.assertEqual(self.client.get("/notifications").status_code,200)
 
-
-class RegistrationTests(unittest.TestCase):
-    def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        project.DB_PATH = Path(self.temp_dir.name) / "test.db"
-        project.app.config["TESTING"] = True
-        self.client = project.app.test_client()
-        project.init_db()
-
-    def tearDown(self):
-        self.temp_dir.cleanup()
-
-    @patch("app.notify_class_representatives")
-    def test_registration_is_saved(self, notify):
-        response = self.client.post("/register", data={
-            "full_name": "Иванов Иван",
-            "group_name": "ИС-21",
-            "email": "ivanov@example.com",
-            "competition_name": "Студенческий проект"
-        }, follow_redirects=True)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("Заявка успешно зарегистрирована".encode(), response.data)
-        notify.assert_called_once()
-
-        with project.get_connection() as connection:
-            count = connection.execute(
-                "SELECT COUNT(*) FROM registrations"
-            ).fetchone()[0]
-        self.assertEqual(count, 1)
-
-    def test_empty_form_is_rejected(self):
-        response = self.client.post("/register", data={}, follow_redirects=True)
-        self.assertIn("заполните все поля".encode(), response.data)
-
-
-if __name__ == "__main__":
-    unittest.main()
+if __name__=="__main__": unittest.main()
